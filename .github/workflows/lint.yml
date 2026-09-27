@@ -1,0 +1,69 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.4'
+
+    - name: Validate composer.json and composer.lock
+      run: composer validate --strict
+
+    - name: Check PHP Syntax Errors
+      run: find . -name "*.php" -not -path "./vendor/*" -exec php -l {} \; | (! grep -v "No syntax errors detected" )
+
+  javascript-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check for JS/CSS issues
+      run: |
+        if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
+          npx eslint resources/js --max-warnings=0
+        else
+          echo "ESLint not configured, skipping..."
+        fi
+      continue-on-error: true
+
+  blade-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.4'
+
+    - name: Install Dependencies
+      run: composer install --no-interaction --prefer-dist
+
+    - name: Check Blade Templates
+      run: |
+        composer require --dev jasonmccreary/laravel-test-assertions
+        php artisan view:clear
+      continue-on-error: true

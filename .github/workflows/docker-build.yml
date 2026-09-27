@@ -1,0 +1,101 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Create Dockerfile if not exists
+      if: ${{ !fileExists('Dockerfile') }}
+      run: |
+        cat > Dockerfile <<'EOF'
+        FROM php:7.4-fpm
+
+        # Install dependencies
+        RUN apt-get update && apt-get install -y \
+            git \
+            curl \
+            libpng-dev \
+            libonig-dev \
+            libxml2-dev \
+            zip \
+            unzip \
+            nodejs \
+            npm
+
+        # Clear cache
+        RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+        # Install PHP extensions
+        RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+
+        # Get Composer
+        COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+        # Set working directory
+        WORKDIR /var/www
+
+        # Copy application files
+        COPY . /var/www
+
+        # Install dependencies
+        RUN composer install --no-dev --optimize-autoloader
+        RUN npm ci && npm run production
+
+        # Set permissions
+        RUN chown -R www-data:www-data /var/www
+
+        EXPOSE 9000
+        CMD ["php-fpm"]
+        EOF
+        echo "Created Dockerfile"

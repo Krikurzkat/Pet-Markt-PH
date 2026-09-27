@@ -1,0 +1,74 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.4'
+
+    - name: Install Composer Dependencies
+      run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16.x'
+        cache: 'npm'
+
+    - name: Install NPM Dependencies
+      run: npm ci
+
+    - name: Build Frontend Assets
+      run: npm run production
+
+    - name: Create deployment artifact
+      run: |
+        tar -czf app.tar.gz \
+          --exclude='.git' \
+          --exclude='node_modules' \
+          --exclude='tests' \
+          --exclude='storage/logs/*.log' \
+          .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-package
+        path: app.tar.gz
+        retention-days: 3
+
+    # Uncomment and configure for your deployment target
+    # - name: Deploy to Server
+    #   uses: appleboy/scp-action@master
+    #   with:
+    #     host: ${{ secrets.DEPLOY_HOST }}
+    #     username: ${{ secrets.DEPLOY_USER }}
+    #     key: ${{ secrets.DEPLOY_KEY }}
+    #     source: "app.tar.gz"
+    #     target: "/path/to/deployment"
+
+    # - name: Execute deployment commands
+    #   uses: appleboy/ssh-action@master
+    #   with:
+    #     host: ${{ secrets.DEPLOY_HOST }}
+    #     username: ${{ secrets.DEPLOY_USER }}
+    #     key: ${{ secrets.DEPLOY_KEY }}
+    #     script: |
+    #       cd /path/to/deployment
+    #       tar -xzf app.tar.gz
+    #       php artisan migrate --force
+    #       php artisan config:cache
+    #       php artisan route:cache
+    #       php artisan view:cache
