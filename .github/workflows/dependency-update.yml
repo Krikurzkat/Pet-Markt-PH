@@ -49,7 +49,7 @@ jobs:
         npm outdated >> update-report.md || true
 
     - name: Upload report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: dependency-update-report
         path: update-report.md
